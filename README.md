@@ -25,9 +25,3 @@ npm run dev
 ```bash
 npm run build
 ```
-
-## Cloudflare Workers へデプロイ
-
-```bash
-npx wrangler deploy
-```
