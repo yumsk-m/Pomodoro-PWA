@@ -1,6 +1,5 @@
 :root {
   --bg-sand: #f4eee1;
-  --bg-amber: #f2c98a;
   --card: rgba(252, 247, 237, 0.88);
   --ink: #1f1d18;
   --accent: #0d6761;
@@ -148,10 +147,6 @@ button {
 
 button:nth-of-type(2) {
   background: #215b86;
-}
-
-button:nth-of-type(3) {
-  background: var(--accent-2);
 }
 
 button:hover:not(:disabled) {

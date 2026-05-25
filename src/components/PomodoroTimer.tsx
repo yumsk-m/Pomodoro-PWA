@@ -1,7 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { setWhiteNoiseVolume, startWhiteNoise, stopWhiteNoise } from '../lib/whiteNoise';
 
-type Phase = 'noise' | 'silent' | 'finished';
+type SessionPhase = 'noise' | 'silent';
+type TimerStatus = 'idle' | 'running' | 'paused';
+type ActiveStatus = Exclude<TimerStatus, 'idle'>;
+
+type TimerState =
+  | { status: 'idle'; phase: 'noise' }
+  | { status: ActiveStatus; phase: SessionPhase };
+
+type TimerViewModel = {
+  title: string;
+  description: string;
+};
 
 type Settings = {
   noiseMinutes: number;
@@ -13,48 +24,59 @@ type Settings = {
 const SETTINGS_KEY = 'white-loop-settings-v1';
 const DEFAULT_VOLUME = 0.08;
 const MAX_VOLUME = 0.35;
+const MAX_MINUTES = 180;
+const MIN_MINUTES = 1;
+const SAVE_DEBOUNCE_MS = 300;
+const defaultSettings: Settings = {
+  noiseMinutes: 25,
+  silentMinutes: 5,
+  totalRounds: 4,
+  volume: DEFAULT_VOLUME,
+};
 
-function clampNumber(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
+function clamp(value: unknown, min: number, max: number, fallback: number): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, n));
+}
+
+function normalizeSettings(settings: Partial<Settings>): Settings {
+  return {
+    noiseMinutes: clamp(settings.noiseMinutes, MIN_MINUTES, MAX_MINUTES, defaultSettings.noiseMinutes),
+    silentMinutes: clamp(settings.silentMinutes, MIN_MINUTES, MAX_MINUTES, defaultSettings.silentMinutes),
+    totalRounds: clamp(settings.totalRounds, 1, 99, defaultSettings.totalRounds),
+    volume: clamp(settings.volume, 0, MAX_VOLUME, defaultSettings.volume),
+  };
 }
 
 function loadSettings(): Settings {
   if (typeof window === 'undefined') {
-    return {
-      noiseMinutes: 25,
-      silentMinutes: 5,
-      totalRounds: 4,
-      volume: DEFAULT_VOLUME,
-    };
+    return defaultSettings;
   }
 
   try {
     const raw = window.localStorage.getItem(SETTINGS_KEY);
     if (!raw) {
-      return {
-        noiseMinutes: 25,
-        silentMinutes: 5,
-        totalRounds: 4,
-        volume: DEFAULT_VOLUME,
-      };
+      return defaultSettings;
     }
 
     const parsed = JSON.parse(raw) as Partial<Settings>;
 
-    return {
-      noiseMinutes: clampNumber(Number(parsed.noiseMinutes ?? 25), 1, 180),
-      silentMinutes: clampNumber(Number(parsed.silentMinutes ?? 5), 1, 60),
-      totalRounds: clampNumber(Number(parsed.totalRounds ?? 4), 1, 20),
-      volume: clampNumber(Number(parsed.volume ?? DEFAULT_VOLUME), 0, MAX_VOLUME),
-    };
+    return normalizeSettings(parsed);
   } catch {
-    return {
-      noiseMinutes: 25,
-      silentMinutes: 5,
-      totalRounds: 4,
-      volume: DEFAULT_VOLUME,
-    };
+    return defaultSettings;
   }
+}
+
+function saveSettings(settings: Settings): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
 function formatTime(totalSeconds: number): string {
@@ -63,55 +85,111 @@ function formatTime(totalSeconds: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
-export default function PomodoroTimer() {
-  const initial = loadSettings();
-  const [noiseMinutes, setNoiseMinutes] = useState(initial.noiseMinutes);
-  const [silentMinutes, setSilentMinutes] = useState(initial.silentMinutes);
-  const [totalRounds, setTotalRounds] = useState(initial.totalRounds);
-  const [volume, setVolume] = useState(initial.volume);
+function getTimerViewModel(state: TimerState): TimerViewModel {
+  switch (state.status) {
+    case 'idle':
+      return {
+        title: '待機中',
+        description: '作業セッションを開始できます。',
+      };
 
-  const [phase, setPhase] = useState<Phase>('noise');
+    case 'paused':
+      return {
+        title: '一時停止中',
+        description:
+          state.phase === 'noise'
+            ? '作業セッションを一時停止しています。'
+            : '休憩セッションを一時停止しています。',
+      };
+
+    case 'running':
+      return state.phase === 'noise'
+        ? {
+            title: '作業中',
+            description: '作業セッション中です。',
+          }
+        : {
+            title: '休憩中',
+            description: '休憩セッション中です。',
+          };
+  }
+}
+
+export default function PomodoroTimer() {
+  const [settings, setSettings] = useState<Settings>(() => loadSettings());
+
+  const [timerState, setTimerState] = useState<TimerState>({
+    phase: 'noise',
+    status: 'idle',
+  });
   const [currentRound, setCurrentRound] = useState(1);
-  const [remainingSeconds, setRemainingSeconds] = useState(initial.noiseMinutes * 60);
-  const [isRunning, setIsRunning] = useState(false);
-  const [hasStarted, setHasStarted] = useState(false);
+  const [remainingSeconds, setRemainingSeconds] = useState(() => settings.noiseMinutes * 60);
 
   const intervalRef = useRef<number | null>(null);
   const phaseEndAtRef = useRef<number | null>(null);
 
-  const phaseLabel = useMemo(() => {
-    if (phase === 'noise') return 'ホワイトノイズ中';
-    if (phase === 'silent') return '無音休憩中';
-    return '完了';
-  }, [phase]);
+  const isRunning = timerState.status === 'running';
+  const timerView = getTimerViewModel(timerState);
+
+  function completeTimer() {
+    setTimerState({
+      phase: 'noise',
+      status: 'idle',
+    });
+    setCurrentRound(1);
+    phaseEndAtRef.current = null;
+    setRemainingSeconds(settings.noiseMinutes * 60);
+    stopWhiteNoise();
+  }
+
+  function switchToSilentPhase() {
+    setTimerState({
+      phase: 'silent',
+      status: 'running',
+    });
+    setRemainingSeconds(settings.silentMinutes * 60);
+    phaseEndAtRef.current = Date.now() + settings.silentMinutes * 60 * 1000;
+  }
+
+  function switchToNoisePhase(nextRound: number) {
+    setCurrentRound(nextRound);
+    setTimerState({
+      phase: 'noise',
+      status: 'running',
+    });
+    setRemainingSeconds(settings.noiseMinutes * 60);
+    phaseEndAtRef.current = Date.now() + settings.noiseMinutes * 60 * 1000;
+    startWhiteNoise(settings.volume);
+  }
+
+  function updateSettings(patch: Partial<Settings>) {
+    setSettings((prev) => normalizeSettings({
+      ...prev,
+      ...patch,
+    }));
+  }
 
   useEffect(() => {
-    const settings: Settings = {
-      noiseMinutes,
-      silentMinutes,
-      totalRounds,
-      volume,
+    const timeoutId = window.setTimeout(() => {
+      saveSettings(settings);
+    }, SAVE_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
     };
-    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  }, [noiseMinutes, silentMinutes, totalRounds, volume]);
+  }, [settings]);
 
   useEffect(() => {
-    if (isRunning && phase === 'noise') {
-      setWhiteNoiseVolume(volume);
+    if (isRunning && timerState.phase === 'noise') {
+      setWhiteNoiseVolume(settings.volume);
     }
-  }, [isRunning, phase, volume]);
+  }, [isRunning, timerState.phase, settings.volume]);
 
   useEffect(() => {
-    if (isRunning || hasStarted) return;
+    if (timerState.status !== 'idle') return;
 
-    if (phase === 'noise') {
-      setRemainingSeconds(noiseMinutes * 60);
-    }
-
-    if (phase === 'silent') {
-      setRemainingSeconds(silentMinutes * 60);
-    }
-  }, [noiseMinutes, silentMinutes, isRunning, hasStarted, phase]);
+    setRemainingSeconds(settings.noiseMinutes * 60);
+  }, [settings.noiseMinutes, timerState.status]);
 
   useEffect(() => {
     if (!isRunning) {
@@ -131,38 +209,25 @@ export default function PomodoroTimer() {
 
       if (nextRemaining > 0) return;
 
-      if (phase === 'noise') {
+      if (timerState.phase === 'noise') {
         stopWhiteNoise();
         // 最終ラウンドは休憩をスキップして終了
-        if (currentRound >= totalRounds) {
-          setPhase('finished');
-          setIsRunning(false);
-          phaseEndAtRef.current = null;
-          setRemainingSeconds(0);
+        if (currentRound >= settings.totalRounds) {
+          completeTimer();
           return;
         }
-        setPhase('silent');
-        setRemainingSeconds(silentMinutes * 60);
-        phaseEndAtRef.current = Date.now() + silentMinutes * 60 * 1000;
+        switchToSilentPhase();
         return;
       }
 
-      if (phase === 'silent') {
-        if (currentRound >= totalRounds) {
-          setPhase('finished');
-          setIsRunning(false);
-          phaseEndAtRef.current = null;
-          setRemainingSeconds(0);
-          stopWhiteNoise();
+      if (timerState.phase === 'silent') {
+        if (currentRound >= settings.totalRounds) {
+          completeTimer();
           return;
         }
 
         const nextRound = currentRound + 1;
-        setCurrentRound(nextRound);
-        setPhase('noise');
-        setRemainingSeconds(noiseMinutes * 60);
-        phaseEndAtRef.current = Date.now() + noiseMinutes * 60 * 1000;
-        startWhiteNoise(volume);
+        switchToNoisePhase(nextRound);
       }
     };
 
@@ -175,7 +240,7 @@ export default function PomodoroTimer() {
         intervalRef.current = null;
       }
     };
-  }, [isRunning, phase, currentRound, totalRounds, noiseMinutes, silentMinutes, volume]);
+  }, [isRunning, timerState.phase, currentRound, settings]);
 
   useEffect(() => {
     return () => {
@@ -186,23 +251,44 @@ export default function PomodoroTimer() {
     };
   }, []);
 
-  const start = () => {
-    if (phase === 'finished' || isRunning) return;
+  const handleStart = () => {
+    if (isRunning) return;
 
-    phaseEndAtRef.current = Date.now() + remainingSeconds * 1000;
-    setHasStarted(true);
-
-    if (phase === 'noise') {
-      startWhiteNoise(volume);
+    if (timerState.status === 'idle') {
+      const nextRemaining = settings.noiseMinutes * 60;
+      setTimerState({
+        phase: 'noise',
+        status: 'running',
+      });
+      setRemainingSeconds(nextRemaining);
+      phaseEndAtRef.current = Date.now() + nextRemaining * 1000;
+      startWhiteNoise(settings.volume);
+      return;
     }
 
-    setIsRunning(true);
+    if (timerState.status === 'paused' && timerState.phase === 'noise') {
+      phaseEndAtRef.current = Date.now() + remainingSeconds * 1000;
+      setTimerState({
+        phase: 'noise',
+        status: 'running',
+      });
+      startWhiteNoise(settings.volume);
+      return;
+    }
+
+    if (timerState.status === 'paused' && timerState.phase === 'silent') {
+      phaseEndAtRef.current = Date.now() + remainingSeconds * 1000;
+      setTimerState({
+        phase: 'silent',
+        status: 'running',
+      });
+      return;
+    }
   };
 
-  const pause = () => {
+  const handlePause = () => {
     if (!isRunning) return;
 
-    setIsRunning(false);
     stopWhiteNoise();
 
     const endAt = phaseEndAtRef.current;
@@ -210,26 +296,33 @@ export default function PomodoroTimer() {
       setRemainingSeconds(Math.max(0, Math.ceil((endAt - Date.now()) / 1000)));
     }
     phaseEndAtRef.current = null;
+
+    setTimerState({
+      phase: timerState.phase,
+      status: 'paused',
+    });
   };
 
-  const reset = () => {
-    setIsRunning(false);
-    setHasStarted(false);
-    setPhase('noise');
+  const handleReset = () => {
+    setTimerState({
+      phase: 'noise',
+      status: 'idle',
+    });
     setCurrentRound(1);
-    setRemainingSeconds(noiseMinutes * 60);
+    setRemainingSeconds(settings.noiseMinutes * 60);
     phaseEndAtRef.current = null;
     stopWhiteNoise();
   };
 
   return (
-    <section className="timer-shell" aria-live="polite">
+    <section className="timer-shell">
       <div className="timer-status-card">
         <p className="eyebrow">Current Session</p>
-        <h2>{phaseLabel}</h2>
+        <h2>{timerView.title}</h2>
+        <p>{timerView.description}</p>
         <p className="countdown">{formatTime(remainingSeconds)}</p>
         <p className="round">
-          Round {Math.min(currentRound, totalRounds)} / {totalRounds}
+          Round {Math.min(currentRound, settings.totalRounds)} / {settings.totalRounds}
         </p>
       </div>
 
@@ -240,10 +333,10 @@ export default function PomodoroTimer() {
             type="number"
             min={1}
             max={180}
-            value={noiseMinutes}
+            value={settings.noiseMinutes}
             disabled={isRunning}
             onChange={(event) =>
-              setNoiseMinutes(clampNumber(Number(event.target.value || 1), 1, 180))
+              updateSettings({ noiseMinutes: Number(event.target.value) })
             }
           />
         </label>
@@ -253,11 +346,11 @@ export default function PomodoroTimer() {
           <input
             type="number"
             min={1}
-            max={60}
-            value={silentMinutes}
+            max={180}
+            value={settings.silentMinutes}
             disabled={isRunning}
             onChange={(event) =>
-              setSilentMinutes(clampNumber(Number(event.target.value || 1), 1, 60))
+              updateSettings({ silentMinutes: Number(event.target.value) })
             }
           />
         </label>
@@ -267,11 +360,11 @@ export default function PomodoroTimer() {
           <input
             type="number"
             min={1}
-            max={20}
-            value={totalRounds}
+            max={99}
+            value={settings.totalRounds}
             disabled={isRunning}
             onChange={(event) =>
-              setTotalRounds(clampNumber(Number(event.target.value || 1), 1, 20))
+              updateSettings({ totalRounds: Number(event.target.value) })
             }
           />
         </label>
@@ -283,9 +376,9 @@ export default function PomodoroTimer() {
             min={0}
             max={MAX_VOLUME}
             step={0.01}
-            value={volume}
+            value={settings.volume}
             onChange={(event) =>
-              setVolume(clampNumber(Number(event.target.value), 0, MAX_VOLUME))
+              updateSettings({ volume: Number(event.target.value) })
             }
           />
         </label>
@@ -294,12 +387,11 @@ export default function PomodoroTimer() {
       <div className="button-row">
         <button
           type="button"
-          onClick={isRunning ? pause : start}
-          disabled={phase === 'finished'}
+          onClick={isRunning ? handlePause : handleStart}
         >
-          {isRunning ? '一時停止' : hasStarted ? '再開' : '開始'}
+          {isRunning ? '一時停止' : timerState.status === 'idle' ? '開始' : '再開'}
         </button>
-        <button type="button" onClick={reset}>
+        <button type="button" onClick={handleReset}>
           リセット
         </button>
       </div>
