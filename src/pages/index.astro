@@ -1,0 +1,33 @@
+---
+import PomodoroTimer from '../components/PomodoroTimer';
+import '../styles/global.css';
+---
+
+<!doctype html>
+<html lang="ja">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="icon" href="/favicon.ico" />
+		<meta name="viewport" content="width=device-width" />
+		<meta name="generator" content={Astro.generator} />
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=M+PLUS+1:wght@400;500;700;800&family=Space+Mono:wght@400;700&display=swap"
+			rel="stylesheet"
+		/>
+		<title>White Loop</title>
+	</head>
+	<body>
+		<main>
+			<section class="hero">
+				<h1>White Loop</h1>
+				<p>
+					ホワイトノイズを用いたポモドーロタイマーです。
+				</p>
+			</section>
+			<PomodoroTimer client:load />
+		</main>
+	</body>
+</html>
