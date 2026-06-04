@@ -129,6 +129,7 @@ export default function PomodoroTimer() {
   const phaseEndAtRef = useRef<number | null>(null);
 
   const isRunning = timerState.status === 'running';
+  const isSessionActive = timerState.status !== 'idle';
   const timerView = getTimerViewModel(timerState);
 
   function completeTimer() {
@@ -334,7 +335,7 @@ export default function PomodoroTimer() {
             min={1}
             max={180}
             value={settings.noiseMinutes}
-            disabled={isRunning}
+            disabled={isSessionActive}
             onChange={(event) =>
               updateSettings({ noiseMinutes: Number(event.target.value) })
             }
@@ -348,7 +349,7 @@ export default function PomodoroTimer() {
             min={1}
             max={180}
             value={settings.silentMinutes}
-            disabled={isRunning}
+            disabled={isSessionActive}
             onChange={(event) =>
               updateSettings({ silentMinutes: Number(event.target.value) })
             }
@@ -362,7 +363,7 @@ export default function PomodoroTimer() {
             min={1}
             max={99}
             value={settings.totalRounds}
-            disabled={isRunning}
+            disabled={isSessionActive}
             onChange={(event) =>
               updateSettings({ totalRounds: Number(event.target.value) })
             }
