@@ -1,0 +1,38 @@
+---
+import type { WebApplication, WithContext } from 'schema-dts';
+
+const title = 'White Loop | ホワイトノイズ対応ポモドーロタイマー';
+const description = 'ホワイトノイズを用いた無料のポモドーロタイマーです。';
+const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
+const structuredData: WithContext<WebApplication> = {
+	'@context': 'https://schema.org',
+	'@type': 'WebApplication',
+	name: 'White Loop',
+	description,
+	url: canonicalUrl.href,
+	applicationCategory: 'Productivity',
+	browserRequirements: 'Requires JavaScript and Web Audio API support',
+	inLanguage: 'ja',
+};
+---
+
+<meta charset="utf-8" />
+<title>{title}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="generator" content={Astro.generator} />
+<meta name="description" content={description} />
+<meta name="theme-color" content="#f4f0e8" />
+<link rel="canonical" href={canonicalUrl} />
+
+<meta property="og:title" content={title} />
+<meta property="og:description" content={description} />
+<meta property="og:type" content="website" />
+<meta property="og:url" content={canonicalUrl} />
+<meta property="og:site_name" content="White Loop" />
+<meta property="og:locale" content="ja_JP" />
+
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content={title} />
+<meta name="twitter:description" content={description} />
+
+<script type="application/ld+json" set:html={JSON.stringify(structuredData)} />
