@@ -1,21 +1,18 @@
 ---
+import type { WebApplication, WithContext } from 'schema-dts';
+
 const title = 'White Loop | ホワイトノイズ対応ポモドーロタイマー';
 const description = 'ホワイトノイズを用いた無料のポモドーロタイマーです。';
 const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
-const structuredData = {
+const structuredData: WithContext<WebApplication> = {
 	'@context': 'https://schema.org',
 	'@type': 'WebApplication',
 	name: 'White Loop',
 	description,
 	url: canonicalUrl.href,
-	applicationCategory: 'ProductivityApplication',
+	applicationCategory: 'Productivity',
 	browserRequirements: 'Requires JavaScript and Web Audio API support',
 	inLanguage: 'ja',
-	offers: {
-		'@type': 'Offer',
-		price: '0',
-		priceCurrency: 'JPY',
-	},
 };
 ---
 
