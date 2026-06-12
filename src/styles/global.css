@@ -122,6 +122,12 @@ input[type='range'] {
   padding: 0.5rem 0;
 }
 
+input:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  background: rgba(232, 226, 214, 0.72);
+}
+
 .button-row {
   display: flex;
   flex-wrap: wrap;
