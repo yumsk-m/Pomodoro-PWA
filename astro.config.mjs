@@ -7,7 +7,7 @@ import cloudflare from '@astrojs/cloudflare';
 
 // https://astro.build/config
 export default defineConfig({
-  site: 'https://pomodoro.yumsk-m.workers.dev',
+  site: 'https://pom.gitourou.com/',
   integrations: [react()],
   adapter: cloudflare(),
 });
