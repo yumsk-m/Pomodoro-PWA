@@ -1,7 +1,7 @@
 ---
 const title = 'White Loop | ホワイトノイズ対応ポモドーロタイマー';
 const description = 'ホワイトノイズと無音の休憩を交互に繰り返し、集中と休息のリズムを整える無料のポモドーロタイマーです。';
-const canonicalUrl = new URL(Astro.url.pathname, Astro.url.origin);
+const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
 const structuredData = {
 	'@context': 'https://schema.org',
 	'@type': 'WebApplication',
@@ -20,6 +20,7 @@ const structuredData = {
 ---
 
 <meta charset="utf-8" />
+<title>{title}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="generator" content={Astro.generator} />
 <meta name="description" content={description} />
@@ -38,4 +39,3 @@ const structuredData = {
 <meta name="twitter:description" content={description} />
 
 <script type="application/ld+json" set:html={JSON.stringify(structuredData)} />
-<title>{title}</title>
