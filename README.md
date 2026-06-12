@@ -28,4 +28,10 @@ npm run build
 
 ## 本番デプロイ設定
 
-SEO 用の canonical URL、sitemap URL を本番ドメインにするため、Cloudflare のビルド環境変数 `SITE_URL` に本番 URL（例: `https://example.com`）を設定してください。
+SEO 用の canonical URL と sitemap URL を本番ドメインにするため、Cloudflare のビルド環境変数 `SITE_URL` に本番 URL を設定してください。
+
+```text
+SITE_URL=https://example.com
+```
+
+未設定の場合は、ローカル開発用の `http://localhost:4321` が使用されます。本番ビルドでは必ず `SITE_URL` を設定してください。
