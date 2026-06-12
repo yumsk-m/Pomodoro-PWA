@@ -25,3 +25,7 @@ npm run dev
 ```bash
 npm run build
 ```
+
+## 本番デプロイ設定
+
+SEO 用の canonical URL、sitemap URL を本番ドメインにするため、Cloudflare のビルド環境変数 `SITE_URL` に本番 URL（例: `https://example.com`）を設定してください。
